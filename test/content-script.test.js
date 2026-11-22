@@ -85,21 +85,34 @@ describe('Content script', () => {
         });
     }
 
+    it('falls back to global fetch when content.fetch fails (e.g. CORS)', async () => {
+        context.content = {fetch: sinon.stub().rejects(new TypeError('NetworkError when attempting to fetch resource.'))};
+
+        const result = await loadListener()(request);
+
+        expect(context.content.fetch.calledOnce).to.equal(true);
+        expectRequest(context.fetch);
+        expect(context.fetch.firstCall.args[1].credentials).to.equal('include');
+        expect(result).to.deep.equal({
+            ok: true,
+            status: 200,
+            statusText: 'OK',
+            filename: 'download.torrent',
+            content: blob,
+        });
+    });
+
     for (const useContent of [true, false]) {
-        it(`returns network errors from ${useContent ? 'content.fetch' : 'global fetch'}`, async () => {
+        it(`returns network errors as plain objects ${useContent ? 'when both fetches fail' : 'from global fetch'}`, async () => {
             const error = new Error('Network error');
             if (useContent) {
-                context.content = {fetch: sinon.stub().rejects(error)};
-            } else {
-                context.fetch.rejects(error);
+                context.content = {fetch: sinon.stub().rejects(new Error('CORS'))};
             }
+            context.fetch.rejects(error);
 
             const result = await loadListener()(request);
 
-            expect(result).to.equal(error);
-            if (useContent) {
-                expect(context.fetch.called).to.equal(false);
-            }
+            expect(result).to.deep.equal({error: 'Network error'});
         });
     }
 

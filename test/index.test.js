@@ -50,6 +50,35 @@ describe('Main tests', () => {
         expect(chrome.tabs.sendMessage.calledOnce).to.equal(true);
     });
 
+    it('fetchTorrent error object from content script', async () => {
+        chrome.tabs.get.withArgs(3).yields({});
+        chrome.tabs.sendMessage.yields({error: 'NetworkError when attempting to fetch resource.'});
+
+        let message = null;
+        try {
+            await fetchTorrent('https://example.com/test.torrent', 3);
+        } catch (e) {
+            message = e.message;
+        }
+
+        expect(message).to.equal('NetworkError when attempting to fetch resource.');
+    });
+
+    it('fetchTorrent no response from content script', async () => {
+        chrome.tabs.get.withArgs(3).yields({});
+        chrome.tabs.sendMessage.yields(undefined);
+        chrome.i18n.getMessage.returns('Failed to fetch torrent.');
+
+        let rejected = false;
+        try {
+            await fetchTorrent('https://example.com/test.torrent', 3);
+        } catch (e) {
+            rejected = true;
+        }
+
+        expect(rejected).to.equal(true);
+    });
+
     it('fetchTorrent Not found', async () => {
         chrome.tabs.get.withArgs(3).yields({});
         chrome.tabs.sendMessage.yields({
