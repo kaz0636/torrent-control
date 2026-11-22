@@ -11,6 +11,11 @@ export default class ruTorrentApi extends BaseClient {
     logIn() {
         const {username, password, hostname, clientOptions} = this.settings;
 
+        // ruTorrent's CSRF check ($enableCSRFCheck) refuses a POST whose
+        // Origin/Referer is not the ruTorrent host. Requests from the extension
+        // carry Origin: moz-extension://..., so present ruTorrent's own origin.
+        this._attachCsrfHeaders();
+
         // No authentication provided
         if (!(username && password))
             return Promise.resolve();
@@ -87,6 +92,36 @@ export default class ruTorrentApi extends BaseClient {
                 .catch((error) => reject(error));
             })
             .catch((error) => reject(error));
+        });
+    }
+
+    _attachCsrfHeaders() {
+        const {hostname} = this.settings;
+
+        if (this.listeners.onBeforeSendHeaders)
+            return;
+
+        let origin;
+        try {
+            origin = new URL(hostname).origin;
+        } catch (e) {
+            return;
+        }
+
+        this.addBeforeSendHeadersEventListener((details) => {
+            // Only touch requests this extension makes, not the user's own tabs
+            if (details.tabId !== -1)
+                return {};
+
+            let requestHeaders = this.filterHeaders(details.requestHeaders, [
+                'origin',
+                'referer',
+            ]);
+
+            requestHeaders.push({name: 'Origin', value: origin});
+            requestHeaders.push({name: 'Referer', value: hostname});
+
+            return {requestHeaders: requestHeaders};
         });
     }
 
