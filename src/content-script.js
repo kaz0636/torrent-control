@@ -41,28 +41,43 @@ async function listener(request) {
         return;
     }
 
-    try {
-        const fetchContext = typeof content !== 'undefined' && typeof content.fetch === 'function' ? content : globalThis;
-        const response = await fetchContext.fetch(request.url, {
-            headers: {
-                'accept': 'application/x-bittorrent,application/octet-stream,*/*',
-            },
-        });
+    const init = {
+        headers: {
+            'accept': 'application/x-bittorrent,application/octet-stream,*/*',
+        },
+    };
 
-        const contentDisposition = response.headers.get('content-disposition');
-        const filename = parseFilenameFromContentDisposition(contentDisposition)
-            || parseFilenameFromUrl(request.url);
+    // Fetch in page context first (sends the site's cookies like a normal
+    // click). That fetch is bound by CORS, so a torrent hosted on another
+    // origin (e.g. a tracker domain linked from a gallery site) fails there;
+    // fall back to the extension's own fetch, which is not bound by CORS.
+    const contexts = [];
+    if (typeof content !== 'undefined' && typeof content.fetch === 'function')
+        contexts.push((url, opts) => content.fetch(url, opts));
+    contexts.push((url, opts) => fetch(url, {...opts, credentials: 'include'}));
 
-        return {
-            ok: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            filename: filename,
-            content: await response.blob(),
-        };
-    } catch (e) {
-        return e;
+    let lastError = null;
+    for (const doFetch of contexts) {
+        try {
+            const response = await doFetch(request.url, init);
+
+            const contentDisposition = response.headers.get('content-disposition');
+            const filename = parseFilenameFromContentDisposition(contentDisposition)
+                || parseFilenameFromUrl(request.url);
+
+            return {
+                ok: response.ok,
+                status: response.status,
+                statusText: response.statusText,
+                filename: filename,
+                content: await response.blob(),
+            };
+        } catch (e) {
+            lastError = e;
+        }
     }
+
+    return {error: String(lastError && lastError.message || lastError)};
 }
 
 chrome.runtime.onMessage.addListener(listener);

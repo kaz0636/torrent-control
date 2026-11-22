@@ -114,8 +114,12 @@ export function fetchTorrent(url, tabId) {
             type: 'fetchTorrent',
             url: url,
         }, (response) => {
-            if (response instanceof Error)
-                return reject(response);
+            if (chrome.runtime.lastError || !response)
+                return reject(new Error(chrome.i18n.getMessage('torrentFetchError',
+                    (chrome.runtime.lastError && chrome.runtime.lastError.message) || 'No response from page (reload the tab)')));
+
+            if (response instanceof Error || response.error)
+                return reject(new Error(chrome.i18n.getMessage('torrentFetchError', response.error || response.message)));
 
             if (!response.ok)
                 return reject(new Error(chrome.i18n.getMessage('torrentFetchError', response.status.toString() + ': ' + response.statusText)));
